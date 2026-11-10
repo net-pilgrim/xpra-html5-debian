@@ -27,6 +27,16 @@ DISP_NUM="${XPRA_DISPLAY#:}"
 rm -f "/tmp/.X${DISP_NUM}-lock" "/tmp/.X11-unix/X${DISP_NUM}" "/run/xpra/${XPRA_DISPLAY}" 2>/dev/null || true
 
 # ------------------------------------------------------------------------------
+# Logout / Disconnect Customization
+# ------------------------------------------------------------------------------
+XPRA_LOGOUT_URL="${XPRA_LOGOUT_URL:-}"
+if [ -n "${XPRA_LOGOUT_URL}" ] && [ -w "/usr/share/xpra/www/index.html" ]; then
+    sed -i "s|/oauth2/sign_out|${XPRA_LOGOUT_URL}|g" /usr/share/xpra/www/index.html /usr/share/xpra/www/connect.html 2>/dev/null || true
+    rm -f /usr/share/xpra/www/index.html.br /usr/share/xpra/www/connect.html.br 2>/dev/null || true
+    gzip -f -k /usr/share/xpra/www/index.html /usr/share/xpra/www/connect.html 2>/dev/null || true
+fi
+
+# ------------------------------------------------------------------------------
 # OAuth2-Proxy / OIDC Reverse Proxy Configuration
 # ------------------------------------------------------------------------------
 ENABLE_OAUTH2_PROXY="${ENABLE_OAUTH2_PROXY:-no}"

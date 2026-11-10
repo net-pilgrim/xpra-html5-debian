@@ -77,6 +77,7 @@ Click **Connect** (or it connects automatically) to interact with the GUI.
 | `XPRA_PORT` | `14500` | Port for the Xpra HTML5 web server inside the container. |
 | `XPRA_PASSWORD` | *(empty)* | Optional password protection for web access. If empty, allows anonymous access. |
 | `XPRA_RESOLUTION` | `1280x800` | Virtual display resolution (e.g., `1920x1080`, `1280x800`). |
+| `XPRA_LOGOUT_URL` | `/oauth2/sign_out` | Custom redirect URL upon disconnect/logout (instead of `connect.html`). |
 | `EXIT_WITH_CHILDREN`| `no` | If set to `yes`, shutting down the primary app terminates the container. |
 
 ---

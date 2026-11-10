@@ -97,12 +97,32 @@ RUN groupadd -g ${GID} ${USER} && \
     echo 'export VOLTDB_HOME=/opt/voltdb' >> /home/${USER}/.bashrc && \
     echo 'export PATH="/opt/voltdb/bin:${PATH}"' >> /home/${USER}/.bashrc
 
-# 8. Install Desktop Shortcuts and customize HTML5 client for borderless desktop
+# 8. Install Desktop Shortcuts and customize HTML5 client for borderless desktop & logout redirect
 COPY desktop/*.desktop /usr/share/applications/
 COPY desktop/xpra-desktop.css /usr/share/xpra/www/css/desktop.css
 RUN cat /usr/share/xpra/www/css/desktop.css >> /usr/share/xpra/www/css/client.css && \
     rm -f /usr/share/xpra/www/css/client.css.br /usr/share/xpra/www/css/client.css.gz && \
     gzip -k /usr/share/xpra/www/css/client.css && \
+    python3 -c '
+with open("/usr/share/xpra/www/index.html", "r") as f:
+    c = f.read()
+target = "client.callback_close = function(reason) {"
+replacement = "client.callback_close = function(reason) { window.location.href = (Utilities.getparam(\"logout_url\") || window.XPRA_LOGOUT_URL || \"/oauth2/sign_out\"); return;"
+if target in c:
+    c = c.replace(target, replacement, 1)
+    with open("/usr/share/xpra/www/index.html", "w") as f:
+        f.write(c)
+
+with open("/usr/share/xpra/www/connect.html", "r") as f:
+    c2 = f.read()
+if "<script>window.location.replace" not in c2:
+    c2 = c2.replace("<head>", "<head><script>var target=(window.location.search&&new URLSearchParams(window.location.search).get(\"logout_url\"))||\"/oauth2/sign_out\";window.location.replace(target);</script>", 1)
+    with open("/usr/share/xpra/www/connect.html", "w") as f:
+        f.write(c2)
+' && \
+    rm -f /usr/share/xpra/www/index.html.br /usr/share/xpra/www/connect.html.br && \
+    gzip -f -k /usr/share/xpra/www/index.html /usr/share/xpra/www/connect.html && \
+    chown -R ${USER}:${USER} /usr/share/xpra/www && \
     cp /usr/share/applications/voltadmin.desktop /home/${USER}/Desktop/ && \
     cp /usr/share/applications/sqlcmd.desktop /home/${USER}/Desktop/ && \
     cp /usr/share/applications/minio-mc.desktop /home/${USER}/Desktop/ && \
