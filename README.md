@@ -227,6 +227,78 @@ The recommended architecture (used by platforms like Coder, Gitpod, and JupyterH
   - `bob.xpra.example.com` (or `/bob/`) routes to `xpra-bob` with `OAUTH2_PROXY_AUTHENTICATED_EMAILS="bob@example.com"`.
 - **Resource Quotas**: Each user pod can be independently rate-limited, CPU/memory constrained, or scaled to 0 when idle.
 
+#### Dynamic Parallel User Provisioning & Scale-to-Zero (4,000 Users Scale)
+
+To support 4,000 users without running 4,000 idle pods simultaneously, pods are provisioned on-demand when users log in and scaled to zero when idle:
+
+```text
+[ Alice / Bob (Browser) ]
+            │
+            ▼ (Simultaneous Logins via Clerk OIDC)
+[ Ingress / Traefik ]
+            │ (Passes X-Forwarded-User header)
+            ▼
+[ Session Launcher Hub / Controller ]
+            │
+            ├─► 1. Checks if Pod "xpra-alice" is running
+            │      └─► If NOT: Creates Pod & PVC in K8s (~2 sec startup)
+            │      └─► Proxies / Redirects Alice to xpra-alice:14500
+            │
+            └─► 2. Simultaneously checks Pod "xpra-bob"
+                   └─► If NOT: Creates Pod & PVC in K8s (~2 sec startup)
+                   └─► Proxies / Redirects Bob to xpra-bob:14500
+```
+
+1. **On-Demand Provisioning (Session Launcher Hub)**:
+   - A lightweight service behind the Ingress reads the OIDC identity header (`X-Forwarded-User: alice`).
+   - If `Pod/xpra-alice` is not already active, the Hub submits an unprivileged Pod manifest to the Kubernetes API.
+   - The container boots in **~2 seconds**, attaches the user's PVC, and begins streaming via WebSockets.
+2. **Automatic Scale-to-Zero (Idle Reaper)**:
+   - When a user closes their browser or idles for 30 minutes, an activity watcher terminates the pod.
+   - The user's files and application state remain safely stored on their PVC.
+   - Memory and CPU are returned immediately to the cluster node pool.
+3. **Routing Options**:
+   - **Subdomain Routing (`*.desktop.company.com`)**: Wildcard Ingress routes `https://alice.desktop.company.com` directly to `Service/xpra-alice` with full browser cookie/cache isolation.
+   - **Single Domain Routing (`desktop.company.com`)**: Users visit a unified URL; the Hub inspects the OIDC session and connects them to their personal container.
+4. **Standard Unprivileged Pod Manifest Template**:
+   ```yaml
+   apiVersion: v1
+   kind: Pod
+   metadata:
+     name: xpra-alice
+     labels:
+       app: xpra-desktop
+       user: alice
+   spec:
+     securityContext:
+       runAsNonRoot: true
+       runAsUser: 1000
+       runAsGroup: 1000
+       fsGroup: 1000
+     containers:
+       - name: desktop
+         image: ghcr.io/net-pilgrim/xpra-html5-debian:latest
+         resources:
+           requests:
+             cpu: "100m"
+             memory: "256Mi"
+           limits:
+             cpu: "2"
+             memory: "1Gi"
+         ports:
+           - containerPort: 14500
+         volumeMounts:
+           - name: user-home
+             mountPath: /home/appuser
+     volumes:
+       - name: user-home
+         persistentVolumeClaim:
+           claimName: pvc-alice
+   ```
+5. **Off-the-Shelf Controllers**:
+   - **KEDA HTTP Add-on**: Auto-scales deployments from 0 to 1 upon incoming HTTP requests and back to 0 on idle.
+   - **Coder / KubeSpawner**: Production-ready open-source session dispatchers that spawn unprivileged Kubernetes pods on OIDC login.
+
 ### 9. OIDC-First Architecture (Zero Active Directory Overhead)
 
 This architecture uses **OpenID Connect (OIDC)** as the single, authoritative source of truth for identity, completely bypassing legacy Microsoft Active Directory (AD) and LDAP dependencies.
