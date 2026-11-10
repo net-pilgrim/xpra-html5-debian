@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=MinIO Client (mc)
+Comment=MinIO Object Storage CLI Client
+Exec=xfce4-terminal --title="MinIO Client (mc)" -e "bash -c 'mc --help; exec bash'"
+Icon=utilities-terminal
+Terminal=false
+Categories=Network;FileTransfer;

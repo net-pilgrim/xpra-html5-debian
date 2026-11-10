@@ -1,0 +1,38 @@
+# ==============================================================================
+# Dex IdP - CyberArk Identity OIDC Simulation Configuration
+# ==============================================================================
+issuer: http://localhost:5556/dex
+
+storage:
+  type: memory
+
+web:
+  http: 0.0.0.0:5556
+
+telemetry:
+  http: 0.0.0.0:5558
+
+oauth2:
+  skipApprovalScreen: true
+  alwaysShowLoginScreen: false
+
+staticClients:
+  - id: cyberark-app
+    redirectURIs:
+      - 'http://localhost:14500/oauth2/callback'
+    name: 'CyberArk Identity (Simulation)'
+    secret: cyberark-super-secret-key-12345
+
+enablePasswordDB: true
+
+staticPasswords:
+  - email: "admin@company.com"
+    # bcrypt hash for "password"
+    hash: "$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W"
+    username: "admin"
+    userID: "08a8684b-db88-4b73-90a9-3cd1661f5466"
+  - email: "developer@company.com"
+    # bcrypt hash for "password"
+    hash: "$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W"
+    username: "developer"
+    userID: "08a8684b-db88-4b73-90a9-3cd1661f5467"

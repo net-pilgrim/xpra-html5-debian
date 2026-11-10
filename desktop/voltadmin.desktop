@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=VoltDB Management (voltadmin)
+Comment=VoltDB Cluster Administration CLI
+Exec=xfce4-terminal --title="VoltDB Management (voltadmin)" -e "bash -c 'voltadmin --help; exec bash'"
+Icon=utilities-terminal
+Terminal=false
+Categories=Development;System;

@@ -1,0 +1,34 @@
+services:
+  xpra:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: xpra-html5-debian:latest
+    container_name: xpra-html5
+    ports:
+      - "14500:14500"
+    environment:
+      # Application to run inside the container.
+      # Default: "python3 /opt/demo/app.py"
+      # Other examples: "xterm", "xcalc", "python3 /path/to/my_app.py"
+      APP: "python3 /opt/demo/app.py"
+
+      # Mode:
+      # "desktop"  -> Full XFCE4 desktop session (default)
+      # "openbox"  -> Lightweight Openbox desktop
+      # "seamless" -> Individual application windows float directly in the browser
+      XPRA_MODE: "desktop"
+
+      # Screen resolution for the virtual X11 display (fallback if dynamic resizing disabled)
+      XPRA_RESOLUTION: "1920x1080"
+
+      # Optional password for HTML5 web client access (leave empty for anonymous)
+      XPRA_PASSWORD: ""
+
+      # Container lifecycle: "yes" shuts down container when main app closes, "no" stays alive
+      EXIT_WITH_CHILDREN: "no"
+
+    # Shared memory size (recommended 256mb+ for smooth video/canvas rendering)
+    shm_size: "256mb"
+
+    restart: unless-stopped

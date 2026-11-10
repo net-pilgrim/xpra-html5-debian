@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=VoltDB SQL Console (sqlcmd)
+Comment=VoltDB Interactive SQL Shell
+Exec=xfce4-terminal --title="VoltDB SQL Console (sqlcmd)" -e "bash -c 'sqlcmd --help; exec bash'"
+Icon=utilities-terminal
+Terminal=false
+Categories=Development;Database;

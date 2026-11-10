@@ -1,0 +1,69 @@
+# ==============================================================================
+# CyberArk Identity OIDC Simulation using Dex IdP + Injected OAuth2-Proxy
+# ==============================================================================
+#
+# This stack simulates an enterprise CyberArk Identity SSO login flow:
+#
+# 1. "dex":
+#    Simulates CyberArk Identity OIDC Provider on http://localhost:5556/dex
+#    Pre-configured with test users:
+#      - admin@company.com / password
+#      - developer@company.com / password
+#
+# 2. "xpra":
+#    Runs the Debian XFCE desktop protected by the injected oauth2-proxy.
+#    When you navigate to http://localhost:14500/, you are automatically
+#    redirected to Dex (simulating CyberArk), authenticate, and land in the
+#    desktop session with VoltDB CLI and MinIO client.
+#
+# Both services share network_mode: host so the OIDC issuer URL matches in
+# both the browser and container without DNS trickery.
+# ==============================================================================
+
+services:
+  dex:
+    build:
+      context: ./dex
+      dockerfile: Dockerfile
+    image: cyberark-dex-simulator:latest
+    container_name: cyberark-dex-simulator
+    restart: unless-stopped
+    ports:
+      - "5556:5556"
+      - "14500:14500"
+    command: ["dex", "serve", "/etc/dex/config.docker.yaml"]
+
+  xpra:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: xpra-html5-debian:latest
+    container_name: xpra-cyberark-simulated
+    restart: unless-stopped
+    network_mode: "container:cyberark-dex-simulator"
+    depends_on:
+      - dex
+    environment:
+      # Xpra desktop settings
+      XPRA_MODE: "desktop"
+      XPRA_RESOLUTION: "1920x1080"
+      XPRA_PORT: "14500"
+      XPRA_INTERNAL_PORT: "14501"
+
+      # Enable embedded OAuth2-Proxy
+      ENABLE_OAUTH2_PROXY: "true"
+
+      # Point OAuth2-Proxy to Dex (Simulated CyberArk Identity)
+      OAUTH2_PROXY_PROVIDER: "oidc"
+      OAUTH2_PROXY_OIDC_ISSUER_URL: "http://localhost:5556/dex"
+      OAUTH2_PROXY_CLIENT_ID: "cyberark-app"
+      OAUTH2_PROXY_CLIENT_SECRET: "cyberark-super-secret-key-12345"
+      OAUTH2_PROXY_REDIRECT_URL: "http://localhost:14500/oauth2/callback"
+      OAUTH2_PROXY_COOKIE_SECRET: "cyberark_simulation_cookie_sec32"
+      OAUTH2_PROXY_COOKIE_SECURE: "false"
+      OAUTH2_PROXY_EMAIL_DOMAINS: "*"
+      OAUTH2_PROXY_SKIP_PROVIDER_BUTTON: "true"
+      OAUTH2_PROXY_APPROVAL_PROMPT: "auto"
+      OAUTH2_PROXY_PROXY_WEBSOCKETS: "true"
+
+    shm_size: "256mb"
