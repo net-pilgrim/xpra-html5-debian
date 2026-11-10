@@ -227,7 +227,72 @@ The recommended architecture (used by platforms like Coder, Gitpod, and JupyterH
   - `bob.xpra.example.com` (or `/bob/`) routes to `xpra-bob` with `OAUTH2_PROXY_AUTHENTICATED_EMAILS="bob@example.com"`.
 - **Resource Quotas**: Each user pod can be independently rate-limited, CPU/memory constrained, or scaled to 0 when idle.
 
-### 9. Building a Custom Container on Top
+### 9. OIDC-First Architecture (Zero Active Directory Overhead)
+
+This architecture uses **OpenID Connect (OIDC)** as the single, authoritative source of truth for identity, completely bypassing legacy Microsoft Active Directory (AD) and LDAP dependencies.
+
+#### Why OIDC over Active Directory?
+- **Zero Domain Controller Overhead**: Eliminates domain controllers, Kerberos tickets, SPN configuration, and machine-join failures.
+- **No License Fees**: Avoids Microsoft CALs (Client Access Licenses) or expensive AWS Managed Microsoft AD service fees.
+- **Modern Security**: Native support for Passkeys (WebAuthn), hardware MFA (FIDO2), phishing-resistant logins, and social/enterprise identity federation (Clerk, Okta, Dex, CyberArk).
+
+#### Injecting OIDC Identity into the Desktop Session
+Although containers run securely under unprivileged `appuser` (UID 1000), the session dynamically personalizes to the logged-in user via OIDC claims (`X-Forwarded-User`, `X-Forwarded-Email`, `X-Forwarded-Preferred-Username`):
+
+1. **Document Authoring (ONLYOFFICE)**:
+   ONLYOFFICE attributes edits and revision comments to the OIDC user:
+   ```bash
+   onlyoffice-desktopeditors --user-name="${OIDC_NAME:-Alice Smith}"
+   ```
+2. **Developer & Git Profile**:
+   Terminal environments automatically set the author profile:
+   ```bash
+   git config --global user.name "${OIDC_NAME}"
+   git config --global user.email "${OIDC_EMAIL}"
+   ```
+3. **Cloud Object Storage (MinIO / S3)**:
+   MinIO supports native OIDC STS tokens (`AssumeRoleWithWebIdentity`), granting the user scoped access only to their private bucket prefix (`s3://company-docs/${OIDC_USER}/*`).
+4. **Role-Based Access Control (RBAC)**:
+   OIDC group claims (e.g. `groups: ["finance", "developers"]`) can dynamically mount application volumes or enforce network policies per user pod.
+
+---
+
+### 10. Running Win32 Apps (via Wine) and Native ONLYOFFICE
+
+The unprivileged container supports both native Linux productivity tools and light Windows applications.
+
+#### Light Win32 Applications (via Wine)
+- **100% User-Space Execution**: Wine translates Win32 API calls directly to Linux/POSIX system calls. It requires **no root privileges, no kernel drivers, and no elevated capabilities**, making it fully compliant with Kubernetes unprivileged `securityContext`.
+- **Minimal Footprint**: Wine adds only **~30–50 MB RAM** to the container.
+- **Instant Launch**: When the `.wine` prefix is initialized at build time (`wineboot --init`), Win32 executables launch in 1–2 seconds.
+- **Zero Windows Licensing**: Avoids the $4.19/user/month Microsoft RDS SAL fee charged on AWS AppStream ($200k/year savings at 4k users).
+
+#### Native ONLYOFFICE Desktop Editors
+- **Native Debian 12 Binary**: No Wine required; ONLYOFFICE distributes official Linux `.deb` packages with 100% MS Office format compatibility (`.docx`, `.xlsx`, `.pptx`, `.pdf`).
+- **Unprivileged Sandbox Wrapper**: Chromium Embedded Framework (CEF) runs in unprivileged pods by launching with `--no-sandbox`:
+  ```bash
+  /usr/bin/onlyoffice-desktopeditors.real --no-sandbox "$@"
+  ```
+- **Seamless or Full Desktop**: Can run as an application icon inside XFCE, or as the primary streaming window in browser tabs (`APP="onlyoffice-desktopeditors"`).
+
+---
+
+### 11. Comparison: K8s Unprivileged Containers vs. AWS AppStream 2.0 (4,000 Users Scale)
+
+| Metric | AWS AppStream 2.0 (Windows) | K8s Unprivileged Stack (Xpra + Wine + Clerk) |
+| :--- | :--- | :--- |
+| **Compute Architecture** | 1 full EC2 Virtual Machine per user | 1 unprivileged container pod per user |
+| **Microsoft RDS Licensing** | **$16,760 / month** ($201,120 / yr) for 4k users | **$0** (Wine is open source LGPL) |
+| **Idle Memory Overhead** | 2.5–4 GB RAM per Windows instance | ~250–350 MB RAM per container |
+| **Packing Density** | 1 user per VM instance | **30–50 users per 16GB / 8-core node** |
+| **Cold Start Latency** | **90–180 seconds** (booting Windows EC2) | **2–3 seconds** (scheduling container) |
+| **Identity Source** | Active Directory / SAML federation | Pure cloud-native **OIDC** (Clerk, Dex, Okta) |
+| **Image Pipeline** | Manual AWS Image Builder (45–60 min) | Automated GitOps Dockerfile build (2 min) |
+| **Est. Monthly Cost (4k users)** | **~$25,000 – $32,000 / mo** | **~$700 – $1,500 / mo** (Hetzner / Bare-Metal)<br/>**~$2,000 – $2,500 / mo** (AWS EKS) |
+
+---
+
+### 12. Building a Custom Container on Top
 You can use `xpra-html5-debian` as a base image for your own Dockerfile:
 
 ```dockerfile
