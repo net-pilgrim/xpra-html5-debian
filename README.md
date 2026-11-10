@@ -148,6 +148,24 @@ Both tools are available directly inside the XFCE desktop (via desktop icons, ap
 
 `oauth2-proxy` is baked directly into the container image. When enabled, it protects port 14500 and proxies authenticated WebSocket/HTTP traffic to the internal desktop session:
 
+#### Using Clerk as Identity Provider (OIDC):
+```bash
+docker run -d -p 14500:14500 \
+  -e ENABLE_OAUTH2_PROXY="true" \
+  -e OAUTH2_PROXY_PROVIDER="oidc" \
+  -e OAUTH2_PROXY_OIDC_ISSUER_URL="https://<your-subdomain>.clerk.accounts.dev" \
+  -e OAUTH2_PROXY_CLIENT_ID="<clerk_client_id>" \
+  -e OAUTH2_PROXY_CLIENT_SECRET="<clerk_client_secret>" \
+  -e OAUTH2_PROXY_SCOPE="openid email profile" \
+  -e OAUTH2_PROXY_REDIRECT_URL="https://<your-domain>/oauth2/callback" \
+  -e OAUTH2_PROXY_COOKIE_SECRET="$(openssl rand -hex 16)" \
+  --name xpra-clerk \
+  xpra-html5-debian
+```
+> [!IMPORTANT]
+> In your Clerk Dashboard under **OAuth Applications** $\rightarrow$ **Scopes**, ensure the **`openid`**, **`email`**, and **`profile`** scopes are enabled for your client application.
+
+#### Using CyberArk Identity:
 ```bash
 docker run -d -p 14500:14500 \
   -e ENABLE_OAUTH2_PROXY="true" \
@@ -179,7 +197,37 @@ nerdctl compose -f docker-compose.dex.yml up -d
   - `developer@company.com` / `password`
 - After logging in, you are immediately redirected into the authenticated XFCE desktop with VoltDB CLI and MinIO client!
 
-### 8. Building a Custom Container on Top
+### 8. Multi-User Architecture & Unprivileged Container Constraints (Kubernetes)
+
+When deploying to Kubernetes or security-hardened production environments, containers must run **unprivileged** (`runAsNonRoot: true`, `allowPrivilegeEscalation: false`, dropped Linux capabilities).
+
+#### Why Not Dynamic In-Container User Creation (`useradd` on Login)?
+- In an unprivileged container, the process runs as an assigned UID (e.g. `1000` / `appuser`).
+- The Linux kernel strictly prevents unprivileged processes from invoking `useradd`, changing file ownership (`chown`), or switching user IDs (`setuid`, `su`, `sudo`, `runuser`).
+- All processes inside the container necessarily run as that single POSIX UID.
+
+#### The Cloud-Native Pattern: One Unprivileged Pod per User
+The recommended architecture (used by platforms like Coder, Gitpod, and JupyterHub) is **one unprivileged Pod per user**:
+
+```text
+[ Browser / User ] 
+       │
+       ▼
+[ Ingress / Traefik + Clerk OIDC Auth ]
+       │
+       ├─► (alice@domain) ──► Pod: xpra-alice (UID 1000, unprivileged) ──► PVC: alice-data (/home/appuser)
+       │
+       └─► (bob@domain)   ──► Pod: xpra-bob   (UID 1000, unprivileged) ──► PVC: bob-data   (/home/appuser)
+```
+
+- **Strictly Unprivileged**: Pods run the same minimal, rootless image with zero elevated privileges.
+- **True Storage & Session Isolation**: Each user gets an independent PersistentVolumeClaim (PVC) mounted to `/home/appuser`. Neither user can inspect or alter the other's files, memory, or processes.
+- **Per-User Ingress & SSO Whitelisting**:
+  - `alice.xpra.example.com` (or `/alice/`) routes to `xpra-alice` with `OAUTH2_PROXY_AUTHENTICATED_EMAILS="alice@example.com"`.
+  - `bob.xpra.example.com` (or `/bob/`) routes to `xpra-bob` with `OAUTH2_PROXY_AUTHENTICATED_EMAILS="bob@example.com"`.
+- **Resource Quotas**: Each user pod can be independently rate-limited, CPU/memory constrained, or scaled to 0 when idle.
+
+### 9. Building a Custom Container on Top
 You can use `xpra-html5-debian` as a base image for your own Dockerfile:
 
 ```dockerfile
